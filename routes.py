@@ -63,18 +63,24 @@ def setup_routes(app, blockchain):
     def sync():
         data = request.json
         incoming_chain = data.get('chain')
-        if incoming_chain:
-            # Convert each dictionary in the incoming_chain to Block objects
+        incoming_wallets = data.get('wallets')
+        if incoming_chain and incoming_wallets:
             incoming_chain = [Block.from_dict(block_data) for block_data in incoming_chain]
             if blockchain.is_valid_chain(incoming_chain) and len(incoming_chain) > len(blockchain.chain):
                 blockchain.replace_chain(incoming_chain)
+                blockchain.update_wallets(incoming_wallets)
                 return jsonify({"message": "Blockchain updated"}), 200
-        return jsonify({"message": "Incoming chain is shorter or invalid"}), 400
+        return jsonify({"message": "Incoming chain or wallets are invalid"}), 400
+
 
 
     @app.route('/request_chain', methods=['GET'])
     def request_chain():
         chain_data = [block.to_dict() for block in blockchain.chain]
         return jsonify({"chain": chain_data})
+
+    @app.route('/wallets', methods=['GET'])
+    def get_wallets():
+        return jsonify({"wallets": blockchain.wallets})
 
     return app

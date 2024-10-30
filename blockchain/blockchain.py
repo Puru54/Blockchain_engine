@@ -37,18 +37,19 @@ class Blockchain:
             self.wallets = {"GENESIS_WALLET": 1000000}
             print("Initialized new blockchain with genesis block")
 
+
     def create_wallet(self, public_key):
-        """Create a new wallet and allocate initial funds from the ICO."""
         if self.ico_funds["GENESIS_WALLET"] >= 10:
             if public_key not in self.wallets:
                 self.wallets[public_key] = 10
                 self.ico_funds["GENESIS_WALLET"] -= 10
-                print(f"Created wallet {public_key} with 10 coins. Remaining ICO funds: {self.ico_funds['GENESIS_WALLET']}")
                 self.save_state()
+                print(f"Created wallet {public_key} with 10 coins. Remaining ICO funds: {self.ico_funds['GENESIS_WALLET']}")
             else:
                 print("Wallet already exists.")
         else:
             raise ValueError("ICO funds depleted")
+
 
     def get_balance(self, wallet_address):
         return self.wallets.get(wallet_address, 0)
@@ -99,8 +100,10 @@ class Blockchain:
             self.wallets[sender] = 0
         if recipient not in self.wallets:
             self.wallets[recipient] = 0
+
         self.wallets[sender] -= amount
         self.wallets[recipient] += amount
+
 
 
     def sync_chain(self, incoming_chain):
@@ -134,7 +137,7 @@ class Blockchain:
     def replace_chain(self, new_chain):
         if len(new_chain) > len(self.chain) and self.is_valid_chain(new_chain):
             self.chain = new_chain
-            # Recompute balances
+            # Reset and recompute balances
             self.wallets = {"GENESIS_WALLET": 1000000}
             for block in self.chain[1:]:  # Skip genesis block
                 for tx_data in block.transactions:
@@ -153,6 +156,7 @@ class Blockchain:
         return False
 
 
+
     def add_block(self, block):
         if self.is_valid_new_block(block, self.chain[-1]):
             self.chain.append(block)
@@ -169,3 +173,8 @@ class Blockchain:
             return True
         else:
             return False
+
+    def update_wallets(self, incoming_wallets):
+        for wallet, balance in incoming_wallets.items():
+            self.wallets[wallet] = balance
+        self.save_state()

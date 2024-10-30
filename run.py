@@ -18,21 +18,26 @@ def run_app(port, db_name):
     server = make_server('0.0.0.0', port, app)
     server.serve_forever()
 
-def sync_with_peers(port, peers):
+def sync_with_peers(blockchain, port, peers):
     while True:
         time.sleep(10)  # Sync every 10 seconds
         for peer in peers:
             try:
-                response = requests.get(f'http://{peer}/request_chain')
-                if response.status_code == 200:
-                    chain = response.json().get('chain')
-                    if chain:
-                        requests.post(f'http://127.0.0.1:{port}/sync', json={'chain': chain})
+                response_chain = requests.get(f'http://{peer}/request_chain')
+                response_wallets = requests.get(f'http://{peer}/wallets')
+
+                if response_chain.status_code == 200 and response_wallets.status_code == 200:
+                    chain = response_chain.json().get('chain')
+                    wallets = response_wallets.json().get('wallets')
+
+                    if chain and wallets:
+                        requests.post(f'http://127.0.0.1:{port}/sync', json={'chain': chain, 'wallets': wallets})
+
             except requests.exceptions.RequestException as e:
                 print(f"Error syncing with peer {peer}: {e}")
 
+
 if __name__ == '__main__':
-    # Define ports and corresponding database names
     configs = [
         (5000, 'blockchain_node1', ['127.0.0.1:5001', '127.0.0.1:5002']),
         (5001, 'blockchain_node2', ['127.0.0.1:5000', '127.0.0.1:5002']),
@@ -41,10 +46,12 @@ if __name__ == '__main__':
 
     threads = []
     for port, db_name, peers in configs:
+        blockchain = Blockchain(CouchDBHandler(db_name))
         thread = threading.Thread(target=run_app, args=(port, db_name))
         thread.start()
         threads.append(thread)
-        sync_thread = threading.Thread(target=sync_with_peers, args=(port, peers))
+
+        sync_thread = threading.Thread(target=sync_with_peers, args=(blockchain, port, peers))
         sync_thread.start()
         threads.append(sync_thread)
 
