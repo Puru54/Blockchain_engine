@@ -1,4 +1,4 @@
-from crypto.crypto import Crypto
+from cryptolib.crypto import Crypto
 
 class Wallet:
     def __init__(self, blockchain):

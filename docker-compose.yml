@@ -15,6 +15,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - blockchain_network
 
   couchdb2:
     image: couchdb:3.2.2
@@ -30,6 +32,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - blockchain_network
 
   blockchain_node_1:
     build: .
@@ -38,9 +42,11 @@ services:
     environment:
       - PORT=5000
       - COUCHDB_URL=http://admin:admin@couchdb1:5984
+      - PEERS=blockchain_node_2:5001
     depends_on:
-      couchdb1:
-        condition: service_healthy
+      - couchdb1
+    networks:
+      - blockchain_network
 
   blockchain_node_2:
     build: .
@@ -48,11 +54,17 @@ services:
       - "5002:5000"
     environment:
       - PORT=5000
-      - COUCHDB_URL=http://admin:admin@couchdb2:5985
+      - COUCHDB_URL=http://admin:admin@couchdb2:5984
+      - PEERS=blockchain_node_1:5001
     depends_on:
-      couchdb2:
-        condition: service_healthy
+      - couchdb2
+    networks:
+      - blockchain_network
 
 volumes:
   couchdb_data1:
   couchdb_data2:
+
+networks:
+  blockchain_network:
+    driver: bridge

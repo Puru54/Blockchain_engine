@@ -1,16 +1,28 @@
+import asyncio
+import threading
 from flask import request, jsonify
 from blockchain.blockchain import Blockchain
 from blockchain.wallet import Wallet
 from database.couchdb_handler import CouchDBHandler
 
-# Create a global instance of Blockchain here
+
+
+
+
 blockchain = Blockchain()
 couchdb = CouchDBHandler()
 
-def setup_routes(app):
+def setup_routes(app, blockchain, p2p_network):
+    loop = p2p_network.loop  
+
     @app.route('/wallet/create', methods=['POST'])
     def create_wallet():
-        wallet = Wallet(blockchain)  # Pass the global blockchain instance
+        wallet = Wallet(blockchain)
+        def broadcast():
+            asyncio.run_coroutine_threadsafe(
+                p2p_network.broadcast_wallet(wallet.public_key), loop
+            )
+        threading.Thread(target=broadcast).start()
         return jsonify(wallet.export_keys(blockchain))
 
     @app.route('/transaction/create', methods=['POST'])
@@ -26,27 +38,37 @@ def setup_routes(app):
 
         try:
             transaction = blockchain.validate_and_process_transaction(sender, recipient, amount, private_key)
-            blockchain.add_transaction(transaction)
+            # Broadcast the transaction to peers in a new thread
+            def broadcast():
+                asyncio.run_coroutine_threadsafe(
+                    p2p_network.broadcast_transaction(transaction.to_dict()), p2p_network.loop
+                )
+            threading.Thread(target=broadcast).start()
             return jsonify(transaction.to_dict())
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
+        
 
+        
+    @app.route('/peers', methods=['GET'])
+    def get_peers():
+        peers = p2p_network.get_connected_peers()
+        return jsonify({"connected_peers": peers})
 
-    @app.route('/transaction/receive', methods=['POST'])
-    def receive_transaction():
-        data = request.json
-        transaction = Transaction(data['sender'], data['recipient'], data['amount'], data['signature'])
-        blockchain.add_transaction(transaction)
-        return jsonify({'message': 'Transaction received and added to the pool'}), 201
 
     @app.route('/mine', methods=['GET'])
     def mine_block():
         new_block = blockchain.mine()
         if new_block:
             couchdb.save_block(new_block)
+            def broadcast():
+                asyncio.run_coroutine_threadsafe(
+                    p2p_network.broadcast_block(new_block.to_dict()), p2p_network.loop
+                )
+            threading.Thread(target=broadcast).start()
             return jsonify(new_block.to_dict())
         return jsonify({"message": "No transactions to mine"})
-    
+
 
     @app.route('/chain', methods=['GET'])
     def get_chain():
@@ -79,15 +101,3 @@ def setup_routes(app):
         Get the remaining ICO funds.
         """
         return jsonify({"ICO_funds_remaining": blockchain.ico_funds["GENESIS_WALLET"]}), 200
-    
-
-
-    @app.route('/nodes/register', methods=['POST'])
-    def register_node():
-        print("Register node endpoint hit")  # Debugging line
-        node_address = request.json.get('node_address')
-        if node_address is None:
-            return jsonify({'error': 'Invalid request: Provide a valid node address'}), 400
-        app.blockchain.register_node(node_address)
-        return jsonify({'message': 'Node registered successfully'}), 201
-

@@ -1,4 +1,3 @@
-# app/crypto/crypto.py
 import base64
 from Crypto.PublicKey import RSA
 from Crypto.Hash import SHA256
@@ -14,6 +13,7 @@ class Crypto:
 
     @staticmethod
     def add_padding(base64_string):
+        # Add padding to base64 string if required
         missing_padding = len(base64_string) % 4
         if missing_padding != 0:
             base64_string += '=' * (4 - missing_padding)
@@ -39,6 +39,7 @@ class Crypto:
             return True
         except (ValueError, TypeError):
             return False
+        
 
     @staticmethod
     def hash(data):

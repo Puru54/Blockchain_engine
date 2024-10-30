@@ -1,11 +1,11 @@
-import threading
-import time
-
-import requests
 from blockchain.block import Block
 from blockchain.transaction import Transaction
-from crypto.crypto import Crypto
+from cryptolib.crypto import Crypto
 from database.couchdb_handler import CouchDBHandler
+
+
+
+
 
 class Blockchain:
     def __init__(self):
@@ -13,8 +13,6 @@ class Blockchain:
         self.chain = []
         self.pending_transactions = []
         self.wallets = {}
-        self.peers = set()  
-
         self.load_state()
         self.ico_funds = {"GENESIS_WALLET": 1000000}
       
@@ -34,15 +32,16 @@ class Blockchain:
     def load_state(self):
         state = self.couchdb.load_blockchain_state()
         if state:
-            self.chain = [Block(**block) for block in state.get("chain", [])]
+            self.chain = [Block.from_dict(block_data) for block_data in state.get("chain", [])]
             self.pending_transactions = state.get("pending_transactions", [])
-            self.wallets = state.get("wallets", {"GENESIS_WALLET": 1000000})
+            self.wallets = state.get('wallets', {"GENESIS_WALLET": 1000000})
             print("Blockchain state loaded from CouchDB")
         else:
             self.chain = [self.create_genesis_block()]
             self.pending_transactions = []
             self.wallets = {"GENESIS_WALLET": 1000000}
             print("Initialized new blockchain with genesis block")
+
 
     def create_wallet(self, public_key):
         """
@@ -63,10 +62,9 @@ class Blockchain:
         return self.wallets.get(wallet_address, 0)
 
     def add_transaction(self, transaction):
-        """Add a transaction to the pending transactions and broadcast it."""
+        """Add a transaction to the pending transaction pool."""
         self.pending_transactions.append(transaction)
         self.save_state()
-        self.broadcast_transaction(transaction)
 
         
     def validate_and_process_transaction(self, sender, recipient, amount, private_key):
@@ -79,11 +77,10 @@ class Blockchain:
         if self.get_balance(sender) < amount:
             raise ValueError("Insufficient funds")
 
-        self.update_balance(sender, recipient, amount)
-
         transaction = Transaction(sender, recipient, amount, signature)
         self.add_transaction(transaction.to_dict())
         return transaction
+
 
     def update_balance(self, sender, recipient, amount):
         if self.wallets.get(sender, 0) >= amount:
@@ -99,12 +96,23 @@ class Blockchain:
             return None
 
         new_block = Block(len(self.chain), self.pending_transactions, self.chain[-1].hash())
-        new_block.mine(difficulty=4)  
+        new_block.mine(difficulty=4)
         self.chain.append(new_block)
+        # Process transactions in the block
+        for tx_data in self.pending_transactions:
+            sender = tx_data['sender']
+            recipient = tx_data['recipient']
+            amount = tx_data['amount']
+            self._process_transaction_in_block(sender, recipient, amount)
         self.pending_transactions = []
         self.save_state()
 
         return new_block
+
+    def _process_transaction_in_block(self, sender, recipient, amount):
+        self.wallets[sender] -= amount
+        self.wallets[recipient] = self.wallets.get(recipient, 0) + amount
+
 
     def sync_chain(self, incoming_chain):
         new_chain = [Block(**block) for block in incoming_chain]
@@ -113,35 +121,60 @@ class Blockchain:
             self.save_state()
             print("Blockchain synchronized with a longer chain from peer.")
 
+    def is_valid_new_block(self, new_block, previous_block):
+        if previous_block.index + 1 != new_block.index:
+            return False
+        elif previous_block.hash() != new_block.previous_hash:
+            return False
+        elif new_block.hash() != new_block.hash():
+            return False
+        else:
+            return True
+
+    def is_valid_chain(self, chain):
+        for i in range(1, len(chain)):
+            current_block = chain[i]
+            previous_block = chain[i - 1]
+            if current_block.previous_hash != previous_block.hash():
+                return False
+            if current_block.hash() != current_block.hash():
+                return False
+        return True
+
     def replace_chain(self, new_chain):
         if len(new_chain) > len(self.chain) and self.is_valid_chain(new_chain):
             self.chain = new_chain
+            # Recompute balances
+            self.wallets = {"GENESIS_WALLET": 1000000}
+            for block in self.chain[1:]:  # Skip genesis block
+                for tx_data in block.transactions:
+                    sender = tx_data['sender']
+                    recipient = tx_data['recipient']
+                    amount = tx_data['amount']
+                    self._process_transaction_in_block(sender, recipient, amount)
             self.pending_transactions = []
             self.save_state()
             print("Chain replaced with the longer valid chain.")
             return True
         return False
 
-    def is_valid_chain(self, chain):
-        for i in range(1, len(chain)):
-            current_block = chain[i]
-            previous_block = chain[i - 1]
-            if current_block['previous_hash'] != previous_block.hash():
-                return False
-        return True
+
+    
+    def add_block(self, block):
+        if self.is_valid_new_block(block, self.chain[-1]):
+            self.chain.append(block)
+            # Process transactions in the block
+            for tx_data in block.transactions:
+                sender = tx_data['sender']
+                recipient = tx_data['recipient']
+                amount = tx_data['amount']
+                self._process_transaction_in_block(sender, recipient, amount)
+            self.pending_transactions = [
+                tx for tx in self.pending_transactions if tx not in block.transactions
+            ]
+            self.save_state()
+            return True
+        else:
+            return False
 
    
-
-    def register_node(self, address):
-        """Register a new node with the blockchain network."""
-        self.peers.add(address)
-        print(f"Node registered: {address}") 
-
-    def broadcast_transaction(self, transaction):
-        """Broadcast a transaction to all peers in the network."""
-        for peer in self.peers:
-            url = f'{peer}/transaction/receive'
-            try:
-                requests.post(url, json=transaction.to_dict())
-            except requests.exceptions.ConnectionError:
-                continue 

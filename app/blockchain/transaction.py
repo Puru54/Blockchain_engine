@@ -1,3 +1,5 @@
+from cryptolib.crypto import Crypto
+
 class Transaction:
     def __init__(self, sender, recipient, amount, signature):
         self.sender = sender
