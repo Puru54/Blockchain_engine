@@ -1,4 +1,5 @@
 from flask import request, jsonify
+from blockchain.block import Block
 from blockchain.blockchain import Blockchain
 from blockchain.wallet import Wallet
 
@@ -22,10 +23,6 @@ def setup_routes(app, blockchain):
             return jsonify(transaction.to_dict())
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
-
-    @app.route('/peers', methods=['GET'])
-    def get_peers():
-        return jsonify({"connected_peers": []})
 
     @app.route('/mine', methods=['GET'])
     def mine_block():
@@ -60,3 +57,24 @@ def setup_routes(app, blockchain):
     @app.route('/ico_funds', methods=['GET'])
     def get_ico_funds():
         return jsonify({"ICO_funds_remaining": blockchain.ico_funds["GENESIS_WALLET"]}), 200
+
+    # Sync endpoints
+    @app.route('/sync', methods=['POST'])
+    def sync():
+        data = request.json
+        incoming_chain = data.get('chain')
+        if incoming_chain:
+            # Convert each dictionary in the incoming_chain to Block objects
+            incoming_chain = [Block.from_dict(block_data) for block_data in incoming_chain]
+            if blockchain.is_valid_chain(incoming_chain) and len(incoming_chain) > len(blockchain.chain):
+                blockchain.replace_chain(incoming_chain)
+                return jsonify({"message": "Blockchain updated"}), 200
+        return jsonify({"message": "Incoming chain is shorter or invalid"}), 400
+
+
+    @app.route('/request_chain', methods=['GET'])
+    def request_chain():
+        chain_data = [block.to_dict() for block in blockchain.chain]
+        return jsonify({"chain": chain_data})
+
+    return app

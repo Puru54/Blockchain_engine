@@ -95,8 +95,13 @@ class Blockchain:
         return new_block
 
     def _process_transaction_in_block(self, sender, recipient, amount):
+        if sender not in self.wallets:
+            self.wallets[sender] = 0
+        if recipient not in self.wallets:
+            self.wallets[recipient] = 0
         self.wallets[sender] -= amount
-        self.wallets[recipient] = self.wallets.get(recipient, 0) + amount
+        self.wallets[recipient] += amount
+
 
     def sync_chain(self, incoming_chain):
         new_chain = [Block(**block) for block in incoming_chain]
@@ -125,6 +130,7 @@ class Blockchain:
                 return False
         return True
 
+
     def replace_chain(self, new_chain):
         if len(new_chain) > len(self.chain) and self.is_valid_chain(new_chain):
             self.chain = new_chain
@@ -135,12 +141,17 @@ class Blockchain:
                     sender = tx_data['sender']
                     recipient = tx_data['recipient']
                     amount = tx_data['amount']
+                    if sender not in self.wallets:
+                        self.wallets[sender] = 0
+                    if recipient not in self.wallets:
+                        self.wallets[recipient] = 0
                     self._process_transaction_in_block(sender, recipient, amount)
             self.pending_transactions = []
             self.save_state()
             print("Chain replaced with the longer valid chain.")
             return True
         return False
+
 
     def add_block(self, block):
         if self.is_valid_new_block(block, self.chain[-1]):
