@@ -72,18 +72,30 @@ def setup_routes(app, blockchain, port):
 
     @app.route('/sync', methods=['POST'])
     def sync():
-        data = request.json
-        incoming_chain = data.get('chain')
-        incoming_wallets = data.get('wallets')
-        incoming_pending_transactions = data.get('pending_transactions')
-        if incoming_chain and incoming_wallets and incoming_pending_transactions:
+        try:
+            data = request.json
+            incoming_chain = data.get('chain')
+            incoming_wallets = data.get('wallets')
+            incoming_pending_transactions = data.get('pending_transactions', [])  # Use default empty list
+
+            if not incoming_chain:
+                return jsonify({"error": "Missing incoming chain"}), 400
+            if not incoming_wallets:
+                return jsonify({"error": "Missing incoming wallets"}), 400
+
             incoming_chain = [Block.from_dict(block_data) for block_data in incoming_chain]
             if blockchain.is_valid_chain(incoming_chain) and len(incoming_chain) > len(blockchain.chain):
                 blockchain.replace_chain(incoming_chain)
                 blockchain.update_wallets(incoming_wallets)
                 blockchain.mempool = {tx['signature']: tx for tx in incoming_pending_transactions}
                 return jsonify({"message": "Blockchain updated"}), 200
-        return jsonify({"message": "Incoming chain, wallets, or pending transactions are invalid"}), 400
+
+            return jsonify({"message": "Incoming chain, wallets, or pending transactions are invalid"}), 400
+        except Exception as e:
+            print(f"Error during sync: {e}")
+            return jsonify({"error": "Server error during sync"}), 500
+
+
 
     @app.route('/request_chain', methods=['GET'])
     def request_chain():

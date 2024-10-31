@@ -15,7 +15,6 @@ class CouchDBHandler:
         except Exception as e:
             print(f"Error connecting to CouchDB at {couchdb_url}: {e}")
 
-    # Other methods remain the same
 
 
     def save_block(self, block):

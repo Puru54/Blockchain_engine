@@ -10,6 +10,7 @@ class Blockchain:
         self.chain = []
         self.mempool = {}  # Dictionary to store transactions by their signatures
         self.wallets = {}
+        self.peers = [] # Add this line
         self.load_state()
         self.ico_funds = {"GENESIS_WALLET": 1000000}
 
@@ -97,10 +98,18 @@ class Blockchain:
         # Broadcast the new block to peers
         for peer in self.peers:
             try:
-                requests.post(f'{peer}/add_block', json=new_block.to_dict())
+                response = requests.post(f'{peer}/sync', json={
+                    'chain': [block.to_dict() for block in self.chain],
+                    'wallets': self.wallets,
+                    'pending_transactions': list(self.mempool.values())  # Ensure this is always included
+                })
+                if response.status_code != 200:
+                    print(f"Error syncing with peer {peer}: {response.text}")
             except requests.exceptions.RequestException as e:
                 print(f"Error broadcasting new block to {peer}: {e}")
         return new_block
+
+
 
 
 

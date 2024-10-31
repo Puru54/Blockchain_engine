@@ -12,11 +12,22 @@ def create_app(db_name, port):
     blockchain = Blockchain(CouchDBHandler(db_name))
     blockchain.peers = [f'http://127.0.0.1:{p}' for p in range(5000, 5003) if p != port]
     setup_routes(app, blockchain, port)
+    app.config['blockchain'] = blockchain # Ensure the blockchain instance is shared
     return app
+
+
+def auto_mine(blockchain):
+    while True:
+        time.sleep(10)  # Mine every 10 seconds
+        new_block = blockchain.mine()
+        if new_block:
+            print(f"New block mined: {new_block.to_dict()}")
+
 
 def run_app(port, db_name):
     app = create_app(db_name, port)
     server = make_server('0.0.0.0', port, app)
+    threading.Thread(target=auto_mine, args=(Blockchain(CouchDBHandler(db_name)),)).start()
     server.serve_forever()
 
 def sync_with_peers(blockchain, port, peers):
