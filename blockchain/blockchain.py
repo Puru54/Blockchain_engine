@@ -7,7 +7,7 @@ class Blockchain:
     def __init__(self, db_handler):
         self.couchdb = db_handler
         self.chain = []
-        self.pending_transactions = []
+        self.mempool = {}  # Using a dictionary to store transactions by their signatures
         self.wallets = {}
         self.load_state()
         self.ico_funds = {"GENESIS_WALLET": 1000000}
@@ -19,7 +19,7 @@ class Blockchain:
     def save_state(self):
         blockchain_state = {
             "chain": [block.to_dict() for block in self.chain],
-            "pending_transactions": self.pending_transactions,
+            "mempool": list(self.mempool.values()),  # Save mempool as a list
             "wallets": self.wallets
         }
         self.couchdb.save_blockchain_state(blockchain_state)
@@ -28,15 +28,14 @@ class Blockchain:
         state = self.couchdb.load_blockchain_state()
         if state:
             self.chain = [Block.from_dict(block_data) for block_data in state.get("chain", [])]
-            self.pending_transactions = state.get("pending_transactions", [])
+            self.mempool = {tx['signature']: tx for tx in state.get("mempool", [])}
             self.wallets = state.get('wallets', {"GENESIS_WALLET": 1000000})
             print("Blockchain state loaded from CouchDB")
         else:
             self.chain = [self.create_genesis_block()]
-            self.pending_transactions = []
+            self.mempool = {}
             self.wallets = {"GENESIS_WALLET": 1000000}
             print("Initialized new blockchain with genesis block")
-
 
     def create_wallet(self, public_key):
         if self.ico_funds["GENESIS_WALLET"] >= 10:
@@ -50,13 +49,12 @@ class Blockchain:
         else:
             raise ValueError("ICO funds depleted")
 
-
     def get_balance(self, wallet_address):
         return self.wallets.get(wallet_address, 0)
 
     def add_transaction(self, transaction):
-        """Add a transaction to the pending transaction pool."""
-        self.pending_transactions.append(transaction)
+        """Add a transaction to the mempool."""
+        self.mempool[transaction['signature']] = transaction
         self.save_state()
 
     def validate_and_process_transaction(self, sender, recipient, amount, private_key):
@@ -80,18 +78,19 @@ class Blockchain:
             raise ValueError("Insufficient funds")
 
     def mine(self):
-        if not self.pending_transactions:
+        if not self.mempool:
             return None
-        new_block = Block(len(self.chain), self.pending_transactions, self.chain[-1].hash())
+        pending_transactions = list(self.mempool.values())
+        new_block = Block(len(self.chain), pending_transactions, self.chain[-1].hash())
         new_block.mine(difficulty=4)
         self.chain.append(new_block)
         # Process transactions in the block
-        for tx_data in self.pending_transactions:
+        for tx_data in pending_transactions:
             sender = tx_data['sender']
             recipient = tx_data['recipient']
             amount = tx_data['amount']
             self._process_transaction_in_block(sender, recipient, amount)
-        self.pending_transactions = []
+        self.mempool = {}
         self.save_state()
         return new_block
 
@@ -100,11 +99,8 @@ class Blockchain:
             self.wallets[sender] = 0
         if recipient not in self.wallets:
             self.wallets[recipient] = 0
-
         self.wallets[sender] -= amount
         self.wallets[recipient] += amount
-
-
 
     def sync_chain(self, incoming_chain):
         new_chain = [Block(**block) for block in incoming_chain]
@@ -133,7 +129,6 @@ class Blockchain:
                 return False
         return True
 
-
     def replace_chain(self, new_chain):
         if len(new_chain) > len(self.chain) and self.is_valid_chain(new_chain):
             self.chain = new_chain
@@ -149,13 +144,11 @@ class Blockchain:
                     if recipient not in self.wallets:
                         self.wallets[recipient] = 0
                     self._process_transaction_in_block(sender, recipient, amount)
-            self.pending_transactions = []
+            self.mempool = {}
             self.save_state()
             print("Chain replaced with the longer valid chain.")
             return True
         return False
-
-
 
     def add_block(self, block):
         if self.is_valid_new_block(block, self.chain[-1]):
@@ -166,9 +159,7 @@ class Blockchain:
                 recipient = tx_data['recipient']
                 amount = tx_data['amount']
                 self._process_transaction_in_block(sender, recipient, amount)
-            self.pending_transactions = [
-                tx for tx in self.pending_transactions if tx not in block.transactions
-            ]
+            self.mempool = {tx['signature']: tx for tx in self.mempool.values() if tx['signature'] not in [tx['signature'] for tx in block.transactions]}
             self.save_state()
             return True
         else:

@@ -1,9 +1,10 @@
 from flask import request, jsonify
+import requests
 from blockchain.block import Block
 from blockchain.blockchain import Blockchain
 from blockchain.wallet import Wallet
 
-def setup_routes(app, blockchain):
+def setup_routes(app, blockchain, port):
     @app.route('/wallet/create', methods=['POST'])
     def create_wallet():
         wallet = Wallet(blockchain)
@@ -20,9 +21,33 @@ def setup_routes(app, blockchain):
             return jsonify({"error": "Missing fields in request"}), 400
         try:
             transaction = blockchain.validate_and_process_transaction(sender, recipient, amount, private_key)
+            # Broadcast the transaction to other nodes
+            requests.post(f'http://127.0.0.1:{port}/transaction/broadcast', json=transaction.to_dict())
             return jsonify(transaction.to_dict())
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
+
+    @app.route('/transaction/broadcast', methods=['POST'])
+    def broadcast_transaction():
+        data = request.json
+        for peer in blockchain.peers:
+            try:
+                requests.post(f'http://{peer}/transaction/add', json=data)
+            except requests.exceptions.RequestException as e:
+                print(f"Error broadcasting transaction to {peer}: {e}")
+        return jsonify({"message": "Transaction broadcast initiated"}), 200
+
+    @app.route('/transaction/add', methods=['POST'])
+    def add_transaction():
+        data = request.json
+        transaction = Transaction(
+            sender=data['sender'],
+            recipient=data['recipient'],
+            amount=data['amount'],
+            signature=data['signature']
+        )
+        blockchain.add_transaction(transaction.to_dict())
+        return jsonify({"message": "Transaction added"}), 200
 
     @app.route('/mine', methods=['GET'])
     def mine_block():
@@ -44,8 +69,7 @@ def setup_routes(app, blockchain):
 
     @app.route('/pending_transactions', methods=['GET'])
     def get_pending_transactions():
-        return jsonify({"pending_transactions": blockchain.pending_transactions})
-
+        return jsonify({"pending_transactions": list(blockchain.mempool.values())})
 
     @app.route('/genesis_balance/<wallet_address>', methods=['GET'])
     def genesis_balance(wallet_address):
@@ -59,8 +83,6 @@ def setup_routes(app, blockchain):
     def get_ico_funds():
         return jsonify({"ICO_funds_remaining": blockchain.ico_funds["GENESIS_WALLET"]}), 200
 
-    
-
     @app.route('/sync', methods=['POST'])
     def sync():
         data = request.json
@@ -72,12 +94,9 @@ def setup_routes(app, blockchain):
             if blockchain.is_valid_chain(incoming_chain) and len(incoming_chain) > len(blockchain.chain):
                 blockchain.replace_chain(incoming_chain)
                 blockchain.update_wallets(incoming_wallets)
-                blockchain.pending_transactions = incoming_pending_transactions
+                blockchain.mempool = {tx['signature']: tx for tx in incoming_pending_transactions}
                 return jsonify({"message": "Blockchain updated"}), 200
         return jsonify({"message": "Incoming chain, wallets, or pending transactions are invalid"}), 400
-
-
-
 
     @app.route('/request_chain', methods=['GET'])
     def request_chain():
@@ -88,7 +107,4 @@ def setup_routes(app, blockchain):
     def get_wallets():
         return jsonify({"wallets": blockchain.wallets})
 
-    
-
-    
     return app
