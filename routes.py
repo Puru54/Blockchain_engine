@@ -46,6 +46,7 @@ def setup_routes(app, blockchain):
     def get_pending_transactions():
         return jsonify({"pending_transactions": blockchain.pending_transactions})
 
+
     @app.route('/genesis_balance/<wallet_address>', methods=['GET'])
     def genesis_balance(wallet_address):
         try:
@@ -58,19 +59,23 @@ def setup_routes(app, blockchain):
     def get_ico_funds():
         return jsonify({"ICO_funds_remaining": blockchain.ico_funds["GENESIS_WALLET"]}), 200
 
-    # Sync endpoints
+    
+
     @app.route('/sync', methods=['POST'])
     def sync():
         data = request.json
         incoming_chain = data.get('chain')
         incoming_wallets = data.get('wallets')
-        if incoming_chain and incoming_wallets:
+        incoming_pending_transactions = data.get('pending_transactions')
+        if incoming_chain and incoming_wallets and incoming_pending_transactions:
             incoming_chain = [Block.from_dict(block_data) for block_data in incoming_chain]
             if blockchain.is_valid_chain(incoming_chain) and len(incoming_chain) > len(blockchain.chain):
                 blockchain.replace_chain(incoming_chain)
                 blockchain.update_wallets(incoming_wallets)
+                blockchain.pending_transactions = incoming_pending_transactions
                 return jsonify({"message": "Blockchain updated"}), 200
-        return jsonify({"message": "Incoming chain or wallets are invalid"}), 400
+        return jsonify({"message": "Incoming chain, wallets, or pending transactions are invalid"}), 400
+
 
 
 

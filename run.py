@@ -25,14 +25,13 @@ def sync_with_peers(blockchain, port, peers):
             try:
                 response_chain = requests.get(f'http://{peer}/request_chain')
                 response_wallets = requests.get(f'http://{peer}/wallets')
-
-                if response_chain.status_code == 200 and response_wallets.status_code == 200:
+                response_pending_transactions = requests.get(f'http://{peer}/pending_transactions')
+                if response_chain.status_code == 200 and response_wallets.status_code == 200 and response_pending_transactions.status_code == 200:
                     chain = response_chain.json().get('chain')
                     wallets = response_wallets.json().get('wallets')
-
-                    if chain and wallets:
-                        requests.post(f'http://127.0.0.1:{port}/sync', json={'chain': chain, 'wallets': wallets})
-
+                    pending_transactions = response_pending_transactions.json().get('pending_transactions')
+                    if chain and wallets and pending_transactions:
+                        requests.post(f'http://127.0.0.1:{port}/sync', json={'chain': chain, 'wallets': wallets, 'pending_transactions': pending_transactions})
             except requests.exceptions.RequestException as e:
                 print(f"Error syncing with peer {peer}: {e}")
 
