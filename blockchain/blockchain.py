@@ -1,3 +1,4 @@
+import requests
 from blockchain.block import Block
 from blockchain.transaction import Transaction
 from cryptolib.crypto import Crypto
@@ -7,7 +8,7 @@ class Blockchain:
     def __init__(self, db_handler):
         self.couchdb = db_handler
         self.chain = []
-        self.mempool = {}  # Using a dictionary to store transactions by their signatures
+        self.mempool = {}  # Dictionary to store transactions by their signatures
         self.wallets = {}
         self.load_state()
         self.ico_funds = {"GENESIS_WALLET": 1000000}
@@ -57,6 +58,7 @@ class Blockchain:
         self.mempool[transaction['signature']] = transaction
         self.save_state()
 
+
     def validate_and_process_transaction(self, sender, recipient, amount, private_key):
         message = f"{sender}{recipient}{amount}"
         signature = Crypto.sign_transaction(private_key, message)
@@ -90,9 +92,17 @@ class Blockchain:
             recipient = tx_data['recipient']
             amount = tx_data['amount']
             self._process_transaction_in_block(sender, recipient, amount)
-        self.mempool = {}
+        self.mempool = {}  # Clear the mempool after mining
         self.save_state()
+        # Broadcast the new block to peers
+        for peer in self.peers:
+            try:
+                requests.post(f'{peer}/add_block', json=new_block.to_dict())
+            except requests.exceptions.RequestException as e:
+                print(f"Error broadcasting new block to {peer}: {e}")
         return new_block
+
+
 
     def _process_transaction_in_block(self, sender, recipient, amount):
         if sender not in self.wallets:
@@ -169,3 +179,6 @@ class Blockchain:
         for wallet, balance in incoming_wallets.items():
             self.wallets[wallet] = balance
         self.save_state()
+        
+
+   

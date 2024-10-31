@@ -2,6 +2,7 @@ from flask import request, jsonify
 import requests
 from blockchain.block import Block
 from blockchain.blockchain import Blockchain
+from blockchain.transaction import Transaction
 from blockchain.wallet import Wallet
 
 def setup_routes(app, blockchain, port):
@@ -22,20 +23,14 @@ def setup_routes(app, blockchain, port):
         try:
             transaction = blockchain.validate_and_process_transaction(sender, recipient, amount, private_key)
             # Broadcast the transaction to other nodes
-            requests.post(f'http://127.0.0.1:{port}/transaction/broadcast', json=transaction.to_dict())
+            for peer in blockchain.peers:
+                try:
+                    requests.post(f'{peer}/transaction/add', json=transaction.to_dict())
+                except requests.exceptions.RequestException as e:
+                    print(f"Error broadcasting transaction to {peer}: {e}")
             return jsonify(transaction.to_dict())
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
-
-    @app.route('/transaction/broadcast', methods=['POST'])
-    def broadcast_transaction():
-        data = request.json
-        for peer in blockchain.peers:
-            try:
-                requests.post(f'http://{peer}/transaction/add', json=data)
-            except requests.exceptions.RequestException as e:
-                print(f"Error broadcasting transaction to {peer}: {e}")
-        return jsonify({"message": "Transaction broadcast initiated"}), 200
 
     @app.route('/transaction/add', methods=['POST'])
     def add_transaction():
@@ -71,14 +66,6 @@ def setup_routes(app, blockchain, port):
     def get_pending_transactions():
         return jsonify({"pending_transactions": list(blockchain.mempool.values())})
 
-    @app.route('/genesis_balance/<wallet_address>', methods=['GET'])
-    def genesis_balance(wallet_address):
-        try:
-            balance = blockchain.get_genesis_balance(wallet_address)
-            return jsonify({"wallet_address": wallet_address, "genesis_balance": balance}), 200
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-
     @app.route('/ico_funds', methods=['GET'])
     def get_ico_funds():
         return jsonify({"ICO_funds_remaining": blockchain.ico_funds["GENESIS_WALLET"]}), 200
@@ -106,5 +93,15 @@ def setup_routes(app, blockchain, port):
     @app.route('/wallets', methods=['GET'])
     def get_wallets():
         return jsonify({"wallets": blockchain.wallets})
+    
+
+    @app.route('/add_block', methods=['POST'])
+    def add_block():
+        data = request.json
+        block = Block.from_dict(data)
+        if blockchain.add_block(block):
+            return jsonify({"message": "Block added"}), 200
+        return jsonify({"message": "Invalid block"}), 400
+
 
     return app
