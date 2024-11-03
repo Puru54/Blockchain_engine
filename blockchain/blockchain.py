@@ -12,6 +12,7 @@ class Blockchain:
         self.wallets = {}
         self.load_state()
         self.ico_funds = {"GENESIS_WALLET": 1000000}
+        self.auto_mine_threshold = 4
 
     def create_genesis_block(self):
         ico_transactions = [{"sender": "ICO", "recipient": "GENESIS_WALLET", "amount": 1000000}]
@@ -53,10 +54,23 @@ class Blockchain:
     def get_balance(self, wallet_address):
         return self.wallets.get(wallet_address, 0)
 
+   
+
     def add_transaction(self, transaction):
-        """Add a transaction to the mempool."""
+        """Add a transaction to the mempool and check if we should auto-mine."""
         self.mempool[transaction['signature']] = transaction
         self.save_state()
+        if len(self.mempool) >= self.auto_mine_threshold:
+            self.mine_and_save()
+
+    def mine_and_save(self):
+        """Mine a new block and save the blockchain state."""
+        new_block = self.mine()
+        if new_block:
+            self.couchdb.save_block(new_block)
+            print("New block mined and saved to CouchDB.")
+
+
 
 
     def validate_and_process_transaction(self, sender, recipient, amount, private_key):
