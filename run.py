@@ -26,9 +26,11 @@ def auto_mine(blockchain):
 
 def run_app(port, db_name):
     app = create_app(db_name, port)
+    blockchain = app.config['blockchain']
     server = make_server('0.0.0.0', port, app)
-    threading.Thread(target=auto_mine, args=(Blockchain(CouchDBHandler(db_name)),)).start()
+    threading.Thread(target=auto_mine, args=(blockchain,)).start()
     server.serve_forever()
+
 
 def sync_with_peers(blockchain, port, peers):
     while True:

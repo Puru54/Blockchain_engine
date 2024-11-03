@@ -116,4 +116,12 @@ def setup_routes(app, blockchain, port):
         return jsonify({"message": "Invalid block"}), 400
 
 
+    def get_transactions_by_wallet(wallet_address):
+            transactions = []
+            for block in blockchain.chain:
+                for tx in block.transactions:
+                    if tx['sender'] == wallet_address or tx['recipient'] == wallet_address:
+                        transactions.append(tx)
+            return jsonify({"transactions": transactions})
+
     return app
