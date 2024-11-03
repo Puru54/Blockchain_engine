@@ -22,7 +22,6 @@ def setup_routes(app, blockchain, port):
             return jsonify({"error": "Missing fields in request"}), 400
         try:
             transaction = blockchain.validate_and_process_transaction(sender, recipient, amount, private_key)
-            # Broadcast the transaction to other nodes
             for peer in blockchain.peers:
                 try:
                     requests.post(f'{peer}/transaction/add', json=transaction.to_dict())
@@ -93,7 +92,6 @@ def setup_routes(app, blockchain, port):
     @app.route('/wallets', methods=['GET'])
     def get_wallets():
         return jsonify({"wallets": blockchain.wallets})
-    
 
     @app.route('/add_block', methods=['POST'])
     def add_block():
@@ -103,5 +101,13 @@ def setup_routes(app, blockchain, port):
             return jsonify({"message": "Block added"}), 200
         return jsonify({"message": "Invalid block"}), 400
 
+    @app.route('/transactions/<wallet_address>', methods=['GET'])
+    def get_wallet_transactions(wallet_address):
+        transactions = []
+        for block in blockchain.chain:
+            for tx in block.transactions:
+                if tx['sender'] == wallet_address or tx['recipient'] == wallet_address:
+                    transactions.append(tx)
+        return jsonify({"transactions": transactions})
 
     return app
